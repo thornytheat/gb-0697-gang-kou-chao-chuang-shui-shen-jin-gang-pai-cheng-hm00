@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% block body %}
+<div class="kpis">
+  <div class="kpi"><small>长航次</small><b>{{outcome.result.balance.voyages}}</b><span>艘</span></div>
+  <div class="kpi"><small>已排（含交接）</small><b>{{outcome.result.balance.scheduled}}</b><span>艘</span></div>
+  <div class="kpi"><small>待定</small><b class="verdict">{{outcome.result.balance.pending}}</b><span>艘</span></div>
+  <div class="kpi"><small>引航员</small><b>{{outcome.result.balance.pilots}}</b><span>人</span></div>
+  <div class="kpi"><small>未采用排法</small><b>{{outcome.result.rejected_plans|length}}</b><span>条</span></div>
+</div>
+
+<div class="grid">
+  <section class="panel timeline">
+    <div class="panel-head"><h2>引航班次与交接</h2><span>UTC · 半开区间</span></div>
+    <div class="scroll">
+      <table class="ledger">
+        <thead><tr><th>船</th><th>排法</th><th>航段/引航员</th><th>锚地停航</th><th>潮窗截止</th><th>余量</th></tr></thead>
+        <tbody>
+        {% for s in outcome.result.schedule %}
+          <tr>
+            <td><strong>{{s.id}}</strong></td>
+            <td>{{'半程交接' if s.kind=='SPLIT' else '全程'}}</td>
+            <td>
+              {% for l in s.legs %}
+                <div>第{{l.leg}}段 · {{l.pilot}} · {{l.start[11:]}}→{{l.end[11:]}}</div>
+              {% endfor %}
+            </td>
+            <td>{{s.anchorage}} · {{s.stop_minutes}}分钟<br><small>{{s.stop_window}}</small></td>
+            <td>{{s.tide_deadline[11:]}}</td>
+            <td class="ok">{{s.slack_minutes}} 分钟</td>
+          </tr>
+        {% else %}
+          <tr><td>本批无可执行航次。</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel conditions">
+    <div class="panel-head"><h2>待定航次与耽误潮窗</h2><span>PENDING</span></div>
+    {% for p in outcome.result.pending %}
+    <div class="isolated">
+      <p><code>{{p.id}}</code> <b class="bad">待定</b></p>
+      <p>耽误潮窗截止：<strong>{{p.missed_tide_window_end}}</strong></p>
+      <p>最早开航 {{p.earliest[11:]}} · 全程需 {{p.transit_minutes}} 分钟</p>
+      <p><small>判定：{{p.missed_tide_window.reason}} · 被拒排法 {{p.rejected_plans|length}} 条</small></p>
+    </div>
+    {% else %}<p>无待定航次。</p>{% endfor %}
+  </section>
+
+  <section class="panel evidence">
+    <div class="panel-head"><h2>交接状态机（旧版班次留痕）</h2><span>{{handovers|length}} 条</span></div>
+    <div class="scroll">
+      <table class="ledger">
+        <thead><tr><th>船</th><th>状态</th><th>班次（版本）</th><th>事件</th></tr></thead>
+        <tbody>
+        {% for h in handovers %}
+          <tr>
+            <td>{{h.ship_id}}</td>
+            <td><code>{{h.status}}</code></td>
+            <td>
+              {% for sh in h.shifts %}
+                <div>{{sh.pilot}} · {{sh.start_s|utc_instant}}→{{sh.end_s|utc_instant}}
+                  <em class="{{'ok' if sh.state=='CURRENT' else 'bad'}}">{{sh.state}} v{{sh.revision}}</em></div>
+              {% endfor %}
+            </td>
+            <td>
+              {% for ev in h.events %}<div>{{ev.action}} @ {{ev.at_s|utc_instant}}</div>
+              {% else %}<div>未开始</div>{% endfor %}
+            </td>
+          </tr>
+        {% else %}<tr><td>无半程交接航次。</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel controls">
+    <div class="panel-head"><h2>交接演练</h2><span>BEGIN/INTERRUPT/RESUME/COMPLETE</span></div>
+    <form id="event-form">
+      <label>批次 <input id="run-id" value="{{run.id}}" readonly></label>
+      <label>船 <input id="ship-id" placeholder="如 V9001"></label>
+      <label>事件ID（幂等键）<input id="event-id" placeholder="如 EV-001"></label>
+      <label>动作
+        <select id="action">
+          <option>BEGIN</option><option>INTERRUPT</option>
+          <option>RESUME</option><option>COMPLETE</option><option>ABORT</option>
+        </select>
+      </label>
+      <label>时刻 <input id="at" value="2026-11-19T20:50:00+00:00"></label>
+      <div class="button-row"><button type="submit" class="btn solid">施加事件</button></div>
+      <output id="event-notice" role="status"></output>
+    </form>
+    <div class="review-row">
+      <a class="btn" href="/api/8/export/{{run.id}}">导出交接证据 CSV</a>
+      <a class="btn" href="/api/8/runs/{{run.id}}">查看批次 JSON</a>
+    </div>
+  </section>
+
+  <section class="panel" style="grid-column:1/-1">
+    <div class="panel-head"><h2>未采用排法（证据留痕）</h2><span>{{outcome.result.rejected_plans|length}} 条</span></div>
+    <div class="scroll">
+      <table class="ledger">
+        <thead><tr><th>船</th><th>类型</th><th>拒绝原因</th><th>明细</th></tr></thead>
+        <tbody>
+        {% for r in outcome.result.rejected_plans %}
+          <tr><td>{{r.ship_id}}</td><td>{{r.kind}}</td><td><code>{{r.reason}}</code></td>
+          <td><small>{{r.detail}}</small></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" style="grid-column:1/-1">
+    <div class="panel-head"><h2>引航员占班台账（重跑不重复占班）</h2><span>{{bookings|length}} 班</span></div>
+    <div class="scroll">
+      <table class="ledger">
+        <thead><tr><th>批次</th><th>船</th><th>引航员</th><th>开始</th><th>结束</th></tr></thead>
+        <tbody>
+        {% for b in bookings %}
+          <tr><td><small>{{b.run_id}}</small></td><td>{{b.ship_id}}</td><td>{{b.pilot}}</td>
+          <td>{{b.start_s|utc_instant}}</td><td>{{b.end_s|utc_instant}}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+<script id="m8-data" type="application/json">{{{'run_id':run.id}|tojson}}</script>
+<script src="/static/handover.js" defer></script>
+{% endblock %}

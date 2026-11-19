@@ -25,6 +25,10 @@ docker compose config --quiet
 - M5 引航排程：`/module/5`，独立计算 `POST /api/5`。
 - M6 计划对账：`/module/6`，独立计算 `POST /api/6`。
 - M7 变更复核：`/module/7`，独立计算 `POST /api/7`。
+- M8 引航交接：`/module/8`，独立计算 `POST /api/8/run`（样例 `sample_data/handover.csv`）。
+  枚举全程/半程交接两类排法，记录全部未采用排法；交接中断保留旧版班次、恢复后切换；
+  同输入重跑幂等、不重复占班；赶不上潮窗的船置 PENDING 并注明耽误的潮窗。
+  规则见 `docs/HANDOVER.md`。
 
 ## 输入与输出
 
